@@ -46,7 +46,7 @@ DB_CONFIG = {
     'host': 'bitnmeta2.synology.me',
     'port': 3307,
     'user': 'iyrc',
-    'password': 'dodan1004~!@',
+    'password': 'Dodan1004!',
     'database': 'sansam'
 }
 
@@ -215,83 +215,99 @@ async def get_gallery(category: Optional[str] = None):
 @app.post("/api/upload")
 async def upload_image(
     category: str = Form(...),
-    image: UploadFile = File(...)
+    images: List[UploadFile] = File(...)
 ):
-    """이미지 업로드"""
+    """이미지 업로드 (여러 개 지원)"""
     
-    # 파일 확장자 확인
-    allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp']
-    file_ext = image.filename.split('.')[-1].lower()
-    if file_ext not in allowed_extensions:
-        raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다")
+    uploaded = []
+    errors = []
     
-    # 파일명 생성
-    timestamp = int(datetime.now().timestamp())
-    unique_id = str(uuid.uuid4())[:8]
-    filename = f"image_{timestamp}_{unique_id}.{file_ext}"
-    
-    # FTP 업로드
-    ftp = get_ftp_connection()
-    if not ftp:
-        raise HTTPException(status_code=500, detail="FTP 연결 실패")
-    
-    try:
-        # FTP 폴더 생성 (없으면)
-        ftp_path = f"{FTP_CONFIG['base_path']}{category}/"
+    for image in images:
         try:
-            ftp.cwd(ftp_path)
-        except:
-            # 폴더 생성
-            dirs = ftp_path.strip('/').split('/')
-            current = ''
-            for d in dirs:
-                current += f'/{d}'
-                try:
-                    ftp.mkd(current)
-                except:
-                    pass
-            ftp.cwd(ftp_path)
+            # 파일 확장자 확인
+            allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp']
+            file_ext = image.filename.split('.')[-1].lower()
+            if file_ext not in allowed_extensions:
+                errors.append(f"{image.filename}: 지원하지 않는 파일 형식")
+                continue
+            
+            # 파일명 생성
+            timestamp = int(datetime.now().timestamp())
+            unique_id = str(uuid.uuid4())[:8]
+            filename = f"image_{timestamp}_{unique_id}.{file_ext}"
+            
+            # FTP 업로드
+            ftp = get_ftp_connection()
+            if not ftp:
+                errors.append(f"{image.filename}: FTP 연결 실패")
+                continue
+            
+            # FTP 폴더 생성 (없으면)
+            ftp_path = f"{FTP_CONFIG['base_path']}{category}/"
+            try:
+                ftp.cwd(ftp_path)
+            except:
+                # 폴더 생성
+                dirs = ftp_path.strip('/').split('/')
+                current = ''
+                for d in dirs:
+                    current += f'/{d}'
+                    try:
+                        ftp.mkd(current)
+                    except:
+                        pass
+                ftp.cwd(ftp_path)
+            
+            # 파일 업로드
+            file_content = await image.read()
+            ftp.storbinary(f'STOR {filename}', io.BytesIO(file_content))
+            ftp.quit()
+            
+            # DB에 메타데이터 저장
+            conn = get_db_connection()
+            if not conn:
+                errors.append(f"{image.filename}: DB 연결 실패")
+                continue
+            
+            cursor = conn.cursor()
+            file_path = f"{ftp_path}{filename}"
+            file_size = len(file_content)
+            
+            # 이미지가 첫 번째인 경우 대표 이미지로 설정
+            cursor.execute("SELECT COUNT(*) FROM gallery_images WHERE category = %s", (category,))
+            count = cursor.fetchone()[0]
+            is_representative = 1 if count == 0 else 0
+            
+            cursor.execute("""
+                INSERT INTO gallery_images 
+                (category, filename, original_name, file_path, file_size, is_representative, display_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (category, filename, image.filename, file_path, file_size, is_representative, count))
+            
+            conn.commit()
+            image_id = cursor.lastrowid
+            
+            cursor.close()
+            conn.close()
+            
+            uploaded.append({
+                "filename": filename,
+                "original_name": image.filename,
+                "file_path": f"/api/image/{category}/{filename}",
+                "image_id": image_id
+            })
         
-        # 파일 업로드
-        file_content = await image.read()
-        ftp.storbinary(f'STOR {filename}', io.BytesIO(file_content))
-        ftp.quit()
-        
-        # DB에 메타데이터 저장
-        conn = get_db_connection()
-        if not conn:
-            raise HTTPException(status_code=500, detail="DB 연결 실패")
-        
-        cursor = conn.cursor()
-        file_path = f"{ftp_path}{filename}"
-        file_size = len(file_content)
-        
-        # 이미지가 첫 번째인 경우 대표 이미지로 설정
-        cursor.execute("SELECT COUNT(*) FROM gallery_images WHERE category = %s", (category,))
-        count = cursor.fetchone()[0]
-        is_representative = 1 if count == 0 else 0
-        
-        cursor.execute("""
-            INSERT INTO gallery_images 
-            (category, filename, original_name, file_path, file_size, is_representative, display_order)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (category, filename, image.filename, file_path, file_size, is_representative, count))
-        
-        conn.commit()
-        image_id = cursor.lastrowid
-        
-        cursor.close()
-        conn.close()
-        
-        return {
-            "success": True,
-            "message": "이미지가 업로드되었습니다",
-            "file_path": f"/api/image/{category}/{filename}",
-            "image_id": image_id
-        }
+        except Exception as e:
+            errors.append(f"{image.filename}: {str(e)}")
     
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"업로드 실패: {str(e)}")
+    return {
+        "success": len(uploaded) > 0,
+        "message": f"{len(uploaded)}장 업로드 성공, {len(errors)}장 실패",
+        "data": {
+            "uploaded": uploaded,
+            "errors": errors
+        }
+    }
 
 @app.get("/api/image/{category}/{filename}")
 async def serve_image(category: str, filename: str):
