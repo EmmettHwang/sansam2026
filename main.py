@@ -3,10 +3,11 @@ import os
 import io
 from datetime import datetime
 from typing import Optional, List
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 import mysql.connector
 from mysql.connector import Error
@@ -16,8 +17,8 @@ import uuid
 # ============================================
 # 버전 정보
 # ============================================
-VERSION = "1.0.20260120-1530"
-VERSION_DATE = "2026-01-20 15:30"
+VERSION = "1.2.20260121-0615"
+VERSION_DATE = "2026-01-21 06:15"
 VERSION_DESCRIPTION = "팜랜드 산양산삼 랜딩 페이지 v1.0"
 
 # FastAPI 앱 생성
@@ -36,7 +37,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 422 에러 핸들러
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    print("\n" + "="*60)
+    print("❌ 422 VALIDATION ERROR")
+    print("="*60)
+    print(f"URL: {request.url}")
+    print(f"Method: {request.method}")
+    print(f"Headers: {dict(request.headers)}")
+    print(f"\nValidation Errors:")
+    for error in exc.errors():
+        print(f"  - {error}")
+    print(f"\nBody: {exc.body}")
+    print("="*60 + "\n")
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "success": False,
+            "message": "입력 데이터 검증 실패",
+            "errors": exc.errors(),
+            "detail": str(exc.errors())
+        }
+    )
+
 # 정적 파일 서빙
+app.mount("/css", StaticFiles(directory="css"), name="css")
+app.mount("/js", StaticFiles(directory="js"), name="js")
+app.mount("/images", StaticFiles(directory="images"), name="images")
 app.mount("/static", StaticFiles(directory="."), name="static")
 
 # ============================================
@@ -56,7 +85,7 @@ FTP_CONFIG = {
     'port': 2121,
     'user': 'ha',
     'password': 'dodan1004~',
-    'base_path': '/sansam/'
+    'base_path': '/homes/ha/sansam/'
 }
 
 # 카테고리 정보
@@ -65,7 +94,8 @@ CATEGORIES = {
     'ginseng': {'name': '산양산삼', 'icon': '🌿'},
     'process': {'name': '선별과정', 'icon': '⚙️'},
     'package': {'name': '포장', 'icon': '📦'},
-    'license': {'name': '인허가', 'icon': '📄'}
+    'license': {'name': '인허가', 'icon': '📄'},
+    'live': {'name': 'Live', 'icon': '📹'}
 }
 
 # ============================================
@@ -90,9 +120,14 @@ def get_ftp_connection():
         ftp.connect(FTP_CONFIG['host'], FTP_CONFIG['port'])
         ftp.login(FTP_CONFIG['user'], FTP_CONFIG['password'])
         ftp.set_pasv(True)
+        
+        # 현재 디렉토리 확인
+        current_dir = ftp.pwd()
+        print(f"🔗 FTP 연결 성공 - 현재 디렉토리: {current_dir}")
+        
         return ftp
     except Exception as e:
-        print(f"FTP Connection Error: {e}")
+        print(f"❌ FTP Connection Error: {e}")
         return None
 
 # ============================================
@@ -102,7 +137,7 @@ class Product(BaseModel):
     name: str
     description: Optional[str] = ""
     price: int
-    image_path: str
+    image_path: Optional[str] = ""  # Optional로 변경
     stock: int = 999
     display_order: int = 0
     is_active: int = 1
@@ -122,13 +157,32 @@ class Order(BaseModel):
 
 @app.get("/")
 async def root():
-    """루트 페이지 - index.html 반환"""
-    return FileResponse("index.html")
+    """루트 페이지 - index.html 반환 (캐시 무시)"""
+    return FileResponse(
+        "index.html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
 
 @app.get("/admin")
 async def admin():
-    """관리자 페이지"""
-    return FileResponse("admin.html")
+    """관리자 페이지 (캐시 무시)"""
+    return FileResponse(
+        "admin.html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
+
+@app.get("/favicon.ico")
+async def favicon():
+    """파비콘"""
+    return FileResponse("favicon.svg", media_type="image/svg+xml")
 
 @app.get("/api/version")
 async def get_version():
@@ -140,6 +194,11 @@ async def get_version():
         "description": VERSION_DESCRIPTION
     }
 
+@app.get("/api/test")
+async def test():
+    """테스트 엔드포인트"""
+    return {"success": True, "message": "API 정상 작동"}
+
 # ============================================
 # 갤러리 API
 # ============================================
@@ -147,8 +206,12 @@ async def get_version():
 @app.get("/api/gallery")
 async def get_gallery(category: Optional[str] = None):
     """갤러리 이미지 조회"""
+    # 로그 최소화
+    # print(f"🖼️ Gallery GET: category={category}")
+    
     conn = get_db_connection()
     if not conn:
+        print("❌ Gallery API: DB 연결 실패")
         raise HTTPException(status_code=500, detail="DB 연결 실패")
     
     try:
@@ -161,6 +224,9 @@ async def get_gallery(category: Optional[str] = None):
                 (category,)
             )
             images = cursor.fetchall()
+            
+            # 로그 제거 - 성능 향상
+            # print(f"   카테고리 '{category}': {len(images)}개 이미지")
             
             # URL 생성
             for img in images:
@@ -184,6 +250,9 @@ async def get_gallery(category: Optional[str] = None):
                     (cat_code,)
                 )
                 images = cursor.fetchall()
+                
+                # 로그 제거 - 성능 향상
+                # print(f"   카테고리 '{cat_code}': {len(images)}개 이미지")
                 
                 # URL 생성
                 for img in images:
@@ -219,6 +288,20 @@ async def upload_image(
 ):
     """이미지 업로드 (여러 개 지원)"""
     
+    print("\n" + "="*60)
+    print("📥 UPLOAD REQUEST RECEIVED")
+    print("="*60)
+    
+    try:
+        print(f"Category: {category}")
+        print(f"Images count: {len(images)}")
+        for i, img in enumerate(images, 1):
+            print(f"  {i}. {img.filename} ({img.content_type})")
+    except Exception as log_error:
+        print(f"❌ 로깅 에러: {log_error}")
+    
+    print("="*60 + "\n")
+    
     uploaded = []
     errors = []
     
@@ -244,23 +327,47 @@ async def upload_image(
             
             # FTP 폴더 생성 (없으면)
             ftp_path = f"{FTP_CONFIG['base_path']}{category}/"
+            
+            # 폴더가 없으면 생성
             try:
                 ftp.cwd(ftp_path)
-            except:
-                # 폴더 생성
-                dirs = ftp_path.strip('/').split('/')
-                current = ''
-                for d in dirs:
-                    current += f'/{d}'
+                print(f"  ✅ FTP 폴더 존재: {ftp_path}")
+            except Exception as e:
+                print(f"  📁 FTP 폴더 생성 중: {ftp_path}")
+                # 각 레벨의 폴더를 순차적으로 생성
+                path_parts = ftp_path.strip('/').split('/')
+                current_path = '/'
+                
+                for part in path_parts:
+                    current_path = current_path.rstrip('/') + '/' + part
                     try:
-                        ftp.mkd(current)
+                        ftp.cwd(current_path)
+                        print(f"    ✅ {current_path} 존재")
                     except:
-                        pass
-                ftp.cwd(ftp_path)
+                        try:
+                            ftp.mkd(current_path)
+                            ftp.cwd(current_path)
+                            print(f"    ✅ {current_path} 생성 완료")
+                        except Exception as mkd_error:
+                            print(f"    ❌ {current_path} 생성 실패: {mkd_error}")
+                            errors.append(f"{image.filename}: FTP 폴더 생성 실패 ({current_path})")
+                            ftp.quit()
+                
+                # 폴더 생성 실패 시 다음 파일로
+                if f"{image.filename}: FTP 폴더 생성 실패" in str(errors):
+                    continue
             
             # 파일 업로드
-            file_content = await image.read()
-            ftp.storbinary(f'STOR {filename}', io.BytesIO(file_content))
+            try:
+                file_content = await image.read()
+                ftp.storbinary(f'STOR {filename}', io.BytesIO(file_content))
+                print(f"  ✅ FTP 업로드 성공: {filename}")
+            except Exception as upload_error:
+                print(f"  ❌ FTP 업로드 실패: {upload_error}")
+                errors.append(f"{image.filename}: {str(upload_error)}")
+                ftp.quit()
+                continue
+            
             ftp.quit()
             
             # DB에 메타데이터 저장
@@ -311,7 +418,32 @@ async def upload_image(
 
 @app.get("/api/image/{category}/{filename}")
 async def serve_image(category: str, filename: str):
-    """FTP에서 이미지 가져오기"""
+    """이미지 제공 (로컬 캐시 우선, 없으면 FTP에서 다운로드)"""
+    
+    # 로컬 캐시 경로
+    cache_dir = f"images/cache/{category}"
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = f"{cache_dir}/{filename}"
+    
+    # 로컬 캐시 확인
+    if os.path.exists(cache_path):
+        # 캐시 사용 (로그 없음 - 성능 향상)
+        
+        # MIME 타입 결정
+        ext = filename.split('.')[-1].lower()
+        mime_types = {
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'webp': 'image/webp'
+        }
+        media_type = mime_types.get(ext, 'image/jpeg')
+        
+        return FileResponse(cache_path, media_type=media_type)
+    
+    # 로컬에 없으는면 FTP에서 다운로드 (첫 번째 요청시만 로그)
+    # print(f"  📥 FTP에서 다운로드 중: {category}/{filename}")
     ftp = get_ftp_connection()
     if not ftp:
         raise HTTPException(status_code=500, detail="FTP 연결 실패")
@@ -326,6 +458,11 @@ async def serve_image(category: str, filename: str):
         
         file_data.seek(0)
         
+        # 로컬에 저장 (캐시) - 로그 제거
+        with open(cache_path, 'wb') as f:
+            f.write(file_data.getvalue())
+        # print(f"  ✅ 로컬 캐시 저장 완료: {cache_path}")
+        
         # MIME 타입 결정
         ext = filename.split('.')[-1].lower()
         mime_types = {
@@ -337,10 +474,11 @@ async def serve_image(category: str, filename: str):
         }
         media_type = mime_types.get(ext, 'image/jpeg')
         
-        from fastapi.responses import StreamingResponse
-        return StreamingResponse(file_data, media_type=media_type)
+        # 로컬 파일로 응답
+        return FileResponse(cache_path, media_type=media_type)
     
     except Exception as e:
+        print(f"  ❌ 이미지 로드 실패: {str(e)}")
         raise HTTPException(status_code=404, detail=f"이미지를 찾을 수 없습니다: {str(e)}")
 
 @app.delete("/api/gallery/{image_id}")
@@ -382,28 +520,146 @@ async def delete_image(image_id: int):
         raise HTTPException(status_code=500, detail=f"DB 오류: {str(e)}")
 
 # ============================================
+# Live 타임랩스 API (FTP 직접 읽기, DB 사용 안 함)
+# ============================================
+
+@app.get("/api/live/images")
+async def get_live_images(limit: int = 100, offset: int = 0):
+    """
+    Live 타임랩스 이미지 목록 조회 (FTP에서 직접)
+    - DB에 저장하지 않고 FTP에서 직접 이미지 목록 가져오기
+    - 최신 이미지부터 정렬
+    """
+    # 로그 최소화 - 필요시에만 출력
+    # print(f"📹 Live Timelapse: limit={limit}, offset={offset}")
+    
+    ftp = get_ftp_connection()
+    if not ftp:
+        raise HTTPException(status_code=500, detail="FTP 연결 실패")
+    
+    try:
+        live_path = f"{FTP_CONFIG['base_path']}live/"
+        
+        # live 폴더로 이동
+        try:
+            ftp.cwd(live_path)
+        except:
+            # live 폴더가 없으면 생성
+            print(f"  📁 Live 폴더 생성: {live_path}")
+            try:
+                ftp.mkd(live_path)
+                ftp.cwd(live_path)
+            except Exception as e:
+                print(f"  ❌ Live 폴더 생성 실패: {e}")
+                ftp.quit()
+                return {
+                    "success": True,
+                    "data": {
+                        "images": [],
+                        "total": 0,
+                        "limit": limit,
+                        "offset": offset
+                    }
+                }
+        
+        # 이미지 파일 목록 가져오기
+        files = []
+        ftp.dir(files.append)
+        
+        # 이미지 파일만 필터링 (jpg, jpeg, png, gif, webp)
+        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+        image_files = []
+        
+        for file_info in files:
+            parts = file_info.split()
+            if len(parts) < 9:
+                continue
+            
+            filename = ' '.join(parts[8:])
+            file_ext = filename.lower().split('.')[-1]
+            
+            if f'.{file_ext}' in image_extensions:
+                # 파일 수정 시간 파싱 (예: -rw-r--r-- 1 user group 12345 Jan 20 15:30 image.jpg)
+                try:
+                    month = parts[5]
+                    day = parts[6]
+                    time_or_year = parts[7]
+                    
+                    # 파일 크기
+                    file_size = int(parts[4])
+                    
+                    image_files.append({
+                        'filename': filename,
+                        'url': f'/api/image/live/{filename}',
+                        'size': file_size,
+                        'modified': f"{month} {day} {time_or_year}"
+                    })
+        # 파일 정보 파싱 실패 시 로그 제거 (성능 향상)
+                except Exception as e:
+                    # print(f"  ⚠️ 파일 정보 파싱 실패: {filename} - {e}")
+                    continue
+        
+        ftp.quit()
+        
+        # 최신 파일부터 정렬 (파일명으로 정렬 - 타임랩스는 보통 타임스탬프 기반)
+        image_files.sort(key=lambda x: x['filename'], reverse=True)
+        
+        # 페이지네이션
+        total = len(image_files)
+        paginated = image_files[offset:offset + limit]
+        
+        # 로그 최소화 - 성능 향상
+        # print(f"  ✅ 총 {total}개 이미지 발견")
+        # print(f"  📄 반환: {len(paginated)}개 (offset: {offset}, limit: {limit})")
+        
+        return {
+            "success": True,
+            "data": {
+                "images": paginated,
+                "total": total,
+                "limit": limit,
+                "offset": offset
+            }
+        }
+    
+    except Exception as e:
+        # 에러만 로그 출력
+        print(f"  ❌ Live 이미지 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"Live 이미지 조회 실패: {str(e)}")
+
+# ============================================
 # 상품 API
 # ============================================
 
 @app.get("/api/products")
 async def get_products(active: Optional[int] = None):
     """상품 목록 조회"""
+    # 로그 최소화
+    # print(f"🔍 Products GET: active={active}")
+    
     conn = get_db_connection()
     if not conn:
+        print("❌ Products API: DB 연결 실패")
         raise HTTPException(status_code=500, detail="DB 연결 실패")
     
     try:
         cursor = conn.cursor(dictionary=True)
         
         if active is not None:
-            cursor.execute(
-                "SELECT * FROM products WHERE is_active = %s ORDER BY display_order ASC, id DESC",
-                (active,)
-            )
+            query = "SELECT * FROM products WHERE is_active = %s ORDER BY display_order ASC, id DESC"
+            cursor.execute(query, (active,))
+            print(f"   SQL: {query} (is_active={active})")
         else:
-            cursor.execute("SELECT * FROM products ORDER BY display_order ASC, id DESC")
+            query = "SELECT * FROM products ORDER BY display_order ASC, id DESC"
+            cursor.execute(query)
+            print(f"   SQL: {query}")
         
         products = cursor.fetchall()
+        print(f"   결과: {len(products)}개 상품")
+        
+        if len(products) > 0:
+            for p in products:
+                print(f"   - ID {p['id']}: {p['name']} (is_active={p['is_active']})")
         
         cursor.close()
         conn.close()
@@ -415,11 +671,14 @@ async def get_products(active: Optional[int] = None):
         }
     
     except Error as e:
+        print(f"❌ Products API Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"DB 오류: {str(e)}")
 
 @app.post("/api/products")
 async def create_product(product: Product):
     """상품 등록"""
+    print(f"📦 상품 등록: {product.name} (₩{product.price:,})")
+    
     conn = get_db_connection()
     if not conn:
         raise HTTPException(status_code=500, detail="DB 연결 실패")
@@ -439,6 +698,8 @@ async def create_product(product: Product):
         cursor.close()
         conn.close()
         
+        print(f"✅ 상품 등록 성공: ID {product_id}")
+        
         return {
             "success": True,
             "message": "상품이 등록되었습니다",
@@ -446,6 +707,7 @@ async def create_product(product: Product):
         }
     
     except Error as e:
+        print(f"❌ 상품 등록 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=f"DB 오류: {str(e)}")
 
 @app.put("/api/products/{product_id}")

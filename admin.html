@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>갤러리 & 상품 관리 - 팜랜드 (FastAPI)</title>
+    
+    <!-- 파비콘 -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="alternate icon" href="/favicon.ico">
+    
     <style>
         * {
             margin: 0;
@@ -613,7 +618,8 @@
             ginseng: { name: '산양산삼', icon: '🌿' },
             process: { name: '선별과정', icon: '⚙️' },
             package: { name: '포장', icon: '📦' },
-            license: { name: '인허가', icon: '📄' }
+            license: { name: '인허가', icon: '📄' },
+            live: { name: 'Live', icon: '📹' }
         };
         
         // 페이지 로드 시 갤러리 및 상품 불러오기
@@ -748,7 +754,7 @@
             formData.append('category', category);
             
             files.forEach((file, index) => {
-                formData.append('images[]', file);
+                formData.append('images', file);
             });
             
             showLoading(true);
@@ -889,7 +895,7 @@
             
             try {
                 const formData = new FormData();
-                formData.append('image', file);
+                formData.append('images', file); // 'image' → 'images'로 수정
                 formData.append('category', 'products'); // 상품 카테고리
                 
                 const response = await fetch(API_BASE + 'upload', {
@@ -900,23 +906,27 @@
                 const result = await response.json();
                 
                 if (!result.success) {
-                    throw new Error(result.message);
+                    throw new Error(result.message || '업로드 실패');
                 }
                 
-                // 이미지 경로 저장
-                productImageUrl = result.file_path;
-                document.getElementById('productImagePath').value = productImageUrl;
-                
-                // 미리보기 표시
-                const preview = document.getElementById('productImagePreview');
-                preview.innerHTML = `
-                    <div style="position: relative; display: inline-block;">
-                        <img src="${productImageUrl}" alt="상품 이미지" style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 2px solid #4a7c2a;">
-                        <button onclick="removeProductImage()" style="position: absolute; top: -10px; right: -10px; background: #f44336; color: white; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer;">✕</button>
-                    </div>
-                `;
-                
-                showStatus('이미지가 업로드되었습니다.', 'success');
+                // 업로드된 첫 번째 이미지 경로 사용
+                if (result.data && result.data.uploaded && result.data.uploaded.length > 0) {
+                    productImageUrl = result.data.uploaded[0].file_path;
+                    document.getElementById('productImagePath').value = productImageUrl;
+                    
+                    // 미리보기 표시
+                    const preview = document.getElementById('productImagePreview');
+                    preview.innerHTML = `
+                        <div style="position: relative; display: inline-block;">
+                            <img src="${productImageUrl}" alt="상품 이미지" style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 2.0 solid #4a7c2a;">
+                            <button onclick="removeProductImage()" style="position: absolute; top: -10px; right: -10px; background: #f44336; color: white; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer;">✕</button>
+                        </div>
+                    `;
+                    
+                    showStatus('이미지가 업로드되었습니다.', 'success');
+                } else {
+                    throw new Error('업로드된 이미지 정보가 없습니다.');
+                }
             } catch (error) {
                 showStatus('이미지 업로드 실패: ' + error.message, 'error');
             }
@@ -932,7 +942,7 @@
         // 상품 목록 로드
         async function loadProducts() {
             try {
-                const response = await fetch(API_BASE + 'products?active=0'); // 모든 상품 조회
+                const response = await fetch(API_BASE + 'products'); // active 파라미터 제거 = 모든 상품 조회
                 const result = await response.json();
                 
                 if (!result.success) {
@@ -997,7 +1007,10 @@
                 name,
                 price: parseInt(price),
                 description,
-                image_path: imagePath || undefined
+                image_path: imagePath || "",  // 빈 문자열로 변경
+                stock: 999,
+                display_order: 0,
+                is_active: 1
             };
             
             if (id) {
@@ -1005,7 +1018,8 @@
             }
             
             try {
-                const response = await fetch(API_BASE + 'products', {
+                const url = id ? API_BASE + 'products/' + id : API_BASE + 'products';
+                const response = await fetch(url, {
                     method: id ? 'PUT' : 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
@@ -1028,7 +1042,7 @@
         // 상품 수정
         async function editProduct(id) {
             try {
-                const response = await fetch(API_BASE + 'products.php');
+                const response = await fetch(API_BASE + 'products');  // 모든 상품 조회 (active 필터 없음)
                 const result = await response.json();
                 
                 const product = result.data.find(p => p.id === id);

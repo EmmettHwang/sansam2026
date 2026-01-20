@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Favicon Generator</title>
+</head>
+<body>
+    <canvas id="canvas" width="64" height="64"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 배경 - 녹색 그라데이션
+        const gradient = ctx.createLinearGradient(0, 0, 0, 64);
+        gradient.addColorStop(0, '#2d5016');
+        gradient.addColorStop(1, '#1a3009');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 64, 64);
+        
+        // 山 한자
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 48px "Noto Serif KR", serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('山', 32, 34);
+        
+        // 다운로드 링크 생성
+        canvas.toBlob(function(blob) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.download = 'favicon.png';
+            link.href = url;
+            link.textContent = 'Download favicon.png';
+            link.style.cssText = 'display:block; margin:20px; font-size:20px; color:#2d5016;';
+            document.body.appendChild(link);
+        });
+    </script>
+</body>
+</html>
