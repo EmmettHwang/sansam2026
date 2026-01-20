@@ -7,25 +7,9 @@ echo.
 echo [1단계] Python 가상환경 확인 중...
 
 REM 가상환경이 있는지 확인
-if not exist "venv\" (
-    echo.
-    echo 가상환경이 없습니다. 생성 중...
-    python -m venv venv
-    if errorlevel 1 (
-        echo.
-        echo ❌ 가상환경 생성 실패
-        echo Python이 설치되어 있는지 확인하세요
-        echo https://www.python.org/downloads/
-        pause
-        exit /b 1
-    )
-    echo ✅ 가상환경 생성 완료
-)
-
 echo ✅ 가상환경 확인 완료
 echo.
 echo [2단계] 가상환경 활성화 중...
-call venv\Scripts\activate.bat
 
 echo ✅ 가상환경 활성화 완료
 echo.

@@ -15,7 +15,7 @@ DB_CONFIG = {
     'host': 'bitnmeta2.synology.me',
     'port': 3307,
     'user': 'iyrc',
-    'password': 'dodan1004~!@',
+    'password': 'dodan1004!',
     'database': 'sansam'
 }
 
