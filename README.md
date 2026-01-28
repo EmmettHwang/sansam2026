@@ -1,6 +1,6 @@
 # 팜랜드 산양산삼 랜딩 페이지
 
-![Version](https://img.shields.io/badge/version-1.3.20260128--2354-green)
+![Version](https://img.shields.io/badge/version-1.4.20260129--0050-green)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-009688)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
@@ -13,7 +13,31 @@
 
 ## 버전 히스토리
 
-### v1.3.20260128-2354 (현재)
+### v1.4.20260129-0050 (현재)
+
+#### 새로운 기능
+- **상담 신청 이메일 알림**: 1분 상담/상세 상담 신청 시 이메일 자동 발송
+  - `/api/consultation` 엔드포인트 추가
+  - SMS 대신 이메일로 실시간 알림
+  - 상담 유형별 이메일 포맷 구분
+
+#### 서버 자동화
+- **로그 자동 정리** (매주 일요일 03:00)
+  - Journal 로그: 200MB 제한, 7일 보관
+  - minilms.log: 7일 보관, 일별 로테이션
+  - 오래된 로그 파일: 30일 이상 자동 삭제
+  - btmp (실패 로그인): 매주 초기화
+- **트래픽 리셋 알림** (매월 1일 09:00)
+  - Cafe24 트래픽 리셋 이메일 알림 발송
+
+#### 인프라
+- **msmtp 메일 설정**: Gmail SMTP 연동
+- **서버 정리 스크립트**: `/usr/local/bin/server-cleanup.sh`
+- **트래픽 알림 스크립트**: `/usr/local/bin/traffic-reset-reminder.sh`
+
+---
+
+### v1.3.20260128-2354
 
 #### 새로운 기능
 - **PC 전화/문자 모달**: PC에서 전화/문자 버튼 클릭 시 예쁜 모달로 안내
@@ -167,6 +191,7 @@ nohup uvicorn main:app --host 0.0.0.0 --port 8001 --reload > /var/log/sansam.log
 | DELETE | /api/products/{id} | 상품 삭제 |
 | GET | /api/live/images | 타임랩스 이미지 |
 | POST | /api/og-image | OG 이미지 업로드 |
+| POST | /api/consultation | 상담 신청 (이메일 발송) |
 
 ---
 

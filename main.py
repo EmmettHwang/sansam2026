@@ -13,14 +13,15 @@ import mysql.connector
 from mysql.connector import Error
 import ftplib
 import uuid
+import subprocess
 from PIL import Image
 
 # ============================================
 # 버전 정보
 # ============================================
-VERSION = "1.3.20260128-2354"
-VERSION_DATE = "2026-01-28 23:54"
-VERSION_DESCRIPTION = "팜랜드 산양산삼 랜딩 페이지 v1.3 - PC 모달, 간단구매 UI 개선"
+VERSION = "1.4.20260129-0050"
+VERSION_DATE = "2026-01-29 00:50"
+VERSION_DESCRIPTION = "팜랜드 산양산삼 랜딩 페이지 v1.4 - 상담신청 이메일 알림, 서버 자동화"
 
 # FastAPI 앱 생성
 app = FastAPI(
@@ -914,6 +915,82 @@ async def get_order(order_number: str):
     
     except Error as e:
         raise HTTPException(status_code=500, detail=f"DB 오류: {str(e)}")
+
+# ============================================
+# 상담 신청 API
+# ============================================
+class ConsultationRequest(BaseModel):
+    name: Optional[str] = ""
+    phone: str
+    purpose: str
+    budget: Optional[str] = "미정"
+    delivery: Optional[str] = "미정"
+    message: Optional[str] = ""
+    form_type: str = "quick"  # "quick" or "detail"
+
+@app.post("/api/consultation")
+async def submit_consultation(request: ConsultationRequest):
+    """상담 신청을 이메일로 전송"""
+    try:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if request.form_type == "quick":
+            subject = f"[1분 상담 신청] {request.phone}"
+            body = f"""안녕하세요, 새로운 상담 신청이 접수되었습니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 1분 상담 신청
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📞 연락처: {request.phone}
+📝 문의 내용: {request.purpose}
+
+⏰ 접수 시간: {now}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+팜랜드 산양산삼 자동 알림
+"""
+        else:
+            subject = f"[상세 상담 신청] {request.name} / {request.phone}"
+            body = f"""안녕하세요, 새로운 상세 상담 신청이 접수되었습니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 상세 상담 신청
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👤 이름: {request.name}
+📞 연락처: {request.phone}
+🎯 목적: {request.purpose}
+💰 예산: {request.budget}
+📅 수령 희망일: {request.delivery}
+💬 추가 요청: {request.message or "없음"}
+
+⏰ 접수 시간: {now}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+팜랜드 산양산삼 자동 알림
+"""
+
+        # 이메일 전송 (msmtp 사용)
+        email_content = f"Subject: {subject}\nContent-Type: text/plain; charset=utf-8\n\n{body}"
+
+        process = subprocess.Popen(
+            ['msmtp', 'hdh6401@gmail.com'],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        stdout, stderr = process.communicate(email_content.encode('utf-8'))
+
+        if process.returncode != 0:
+            print(f"Email send error: {stderr.decode()}")
+            # 이메일 실패해도 성공 응답 (사용자 경험을 위해)
+
+        return {"success": True, "message": "상담 신청이 접수되었습니다."}
+
+    except Exception as e:
+        print(f"Consultation error: {str(e)}")
+        return {"success": False, "message": "상담 신청 처리 중 오류가 발생했습니다."}
 
 # ============================================
 # 서버 실행

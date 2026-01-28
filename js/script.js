@@ -210,33 +210,43 @@ function initForms() {
     }
 }
 
-function handleQuickFormSubmit(e) {
+async function handleQuickFormSubmit(e) {
     e.preventDefault();
-    
+
     const formData = new FormData(e.target);
     const phone = formData.get('phone');
     const purpose = formData.get('purpose');
-    
+
     // 전화번호 유효성 검사
     if (!validatePhone(phone)) {
         alert('올바른 전화번호를 입력해 주세요.\n예: 010-0000-0000');
         return;
     }
-    
-    // SMS 전송 (기본 문자 앱 열기)
-    const message = encodeURIComponent(`안녕하세요. 산양산삼 상담을 원합니다.\n문의 내용: ${purpose}\n연락처: ${phone}`);
-    window.location.href = `sms:010-2512-6818?body=${message}`;
-    
-    // 폼 초기화 및 감사 메시지
-    setTimeout(() => {
+
+    // API로 상담 신청 전송
+    try {
+        const response = await fetch('/api/consultation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                phone: phone,
+                purpose: purpose,
+                form_type: 'quick'
+            })
+        });
+
+        const result = await response.json();
         e.target.reset();
         showThankYouMessage('간편 상담 신청이 완료되었습니다. 곧 연락드리겠습니다.');
-    }, 500);
+    } catch (error) {
+        console.error('상담 신청 오류:', error);
+        alert('상담 신청 중 오류가 발생했습니다. 전화로 문의해 주세요.\n☎️ 010-2512-6818');
+    }
 }
 
-function handleDetailFormSubmit(e) {
+async function handleDetailFormSubmit(e) {
     e.preventDefault();
-    
+
     const formData = new FormData(e.target);
     const name = formData.get('name');
     const phone = formData.get('phone');
@@ -244,42 +254,48 @@ function handleDetailFormSubmit(e) {
     const budget = formData.get('budget') || '미정';
     const delivery = formData.get('delivery') || '미정';
     const message = formData.get('message') || '없음';
-    
+
     // 전화번호 유효성 검사
     if (!validatePhone(phone)) {
         alert('올바른 전화번호를 입력해 주세요.\n예: 010-0000-0000');
         return;
     }
-    
+
     // 개인정보 동의 확인
     if (!formData.get('privacy')) {
         alert('개인정보 수집 및 이용에 동의해 주세요.');
         return;
     }
-    
-    // SMS 전송 (기본 문자 앱 열기)
-    const smsBody = encodeURIComponent(
-        `[산양산삼 상담 신청]\n` +
-        `이름: ${name}\n` +
-        `연락처: ${phone}\n` +
-        `목적: ${purpose}\n` +
-        `예산: ${budget}\n` +
-        `수령일: ${delivery}\n` +
-        `추가요청: ${message}`
-    );
-    window.location.href = `sms:010-2512-6818?body=${smsBody}`;
-    
-    // 폼 초기화 및 감사 메시지
-    setTimeout(() => {
+
+    // API로 상담 신청 전송
+    try {
+        const response = await fetch('/api/consultation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                phone: phone,
+                purpose: purpose,
+                budget: budget,
+                delivery: delivery,
+                message: message,
+                form_type: 'detail'
+            })
+        });
+
+        const result = await response.json();
         e.target.reset();
         showThankYouMessage('상세 상담 신청이 완료되었습니다. 확인 후 빠르게 연락드리겠습니다.');
-        
+
         // 페이지 상단으로 스크롤
         window.scrollTo({
             top: 0,
             behavior: 'smooth'
         });
-    }, 500);
+    } catch (error) {
+        console.error('상담 신청 오류:', error);
+        alert('상담 신청 중 오류가 발생했습니다. 전화로 문의해 주세요.\n☎️ 010-2512-6818');
+    }
 }
 
 // ============================================
