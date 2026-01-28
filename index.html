@@ -6,14 +6,29 @@
     <meta name="description" content="팜랜드 산양산삼 - 강원도 원주에서 자연 그대로 키운 산양산삼. 선물용 추천부터 가정용까지 즉시 상담해 드립니다.">
     <meta name="keywords" content="산양산삼, 산삼, 강원도 산삼, 선물용 산삼, 팜랜드">
     <title>팜랜드 산양산삼 - 자연 그대로 키운 정성</title>
+
+    <!-- Open Graph / 미리보기 -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://wonjusansam.co.kr/">
+    <meta property="og:title" content="팜랜드 산양산삼 - 자연 그대로 키운 정성">
+    <meta property="og:description" content="강원도 원주에서 자연 그대로 키운 산양산삼. 선물용 추천부터 가정용까지 즉시 상담해 드립니다.">
+    <meta property="og:image" content="https://wonjusansam.co.kr/images/og-preview.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="팜랜드 산양산삼 - 자연 그대로 키운 정성">
+    <meta name="twitter:description" content="강원도 원주에서 자연 그대로 키운 산양산삼.">
+    <meta name="twitter:image" content="https://wonjusansam.co.kr/images/og-preview.jpg">
     
     <!-- 파비콘 -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="alternate icon" href="favicon.ico">
     
     <!-- 스타일시트 -->
-    <link rel="stylesheet" href="css/style.css?v=20260121-0615">
-    <link rel="stylesheet" href="css/live-player.css?v=20260121-0615">
+    <link rel="stylesheet" href="css/style.css?v=20260128-2354">
+    <link rel="stylesheet" href="css/live-player.css?v=20260128-2230">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -204,8 +219,81 @@
                 <h2 class="section-title">🛒 간단구매</h2>
                 <p class="section-subtitle">클릭 한 번으로 바로 구매하세요</p>
             </div>
-            
-            <div class="product-grid" id="productGrid">
+
+            <style>
+                /* Admin 등록된 상품과 동일한 스타일 */
+                #productGrid {
+                    display: grid !important;
+                    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)) !important;
+                    gap: 20px !important;
+                }
+                #productGrid .product-item {
+                    background: white !important;
+                    border: 2px solid #e0e0e0 !important;
+                    border-radius: 12px !important;
+                    overflow: hidden !important;
+                    transition: all 0.3s !important;
+                }
+                #productGrid .product-item:hover {
+                    border-color: #4a7c2a !important;
+                    box-shadow: 0 4px 12px rgba(74, 124, 42, 0.2) !important;
+                }
+                #productGrid .product-image {
+                    width: 100% !important;
+                    height: 200px !important;
+                    object-fit: cover !important;
+                    background: #f0f0f0 !important;
+                }
+                #productGrid .product-info {
+                    padding: 15px !important;
+                }
+                #productGrid .product-name {
+                    font-size: 16px !important;
+                    font-weight: 600 !important;
+                    color: #333 !important;
+                    margin-bottom: 8px !important;
+                }
+                #productGrid .product-price {
+                    font-size: 20px !important;
+                    font-weight: 700 !important;
+                    color: #4a7c2a !important;
+                    margin-bottom: 12px !important;
+                }
+                #productGrid .product-actions {
+                    display: flex !important;
+                    gap: 8px !important;
+                }
+                #productGrid .btn-small {
+                    padding: 8px 12px !important;
+                    font-size: 13px !important;
+                    border-radius: 6px !important;
+                    border: none !important;
+                    cursor: pointer !important;
+                    transition: all 0.3s !important;
+                    flex: 1 !important;
+                }
+                #productGrid .btn-buy {
+                    background: #ff6b35 !important;
+                    color: white !important;
+                }
+                #productGrid .btn-buy:hover {
+                    background: #e55a2b !important;
+                }
+                #productGrid .btn-inquiry {
+                    background: #4a7c2a !important;
+                    color: white !important;
+                }
+                #productGrid .btn-inquiry:hover {
+                    background: #2d5016 !important;
+                }
+                @media (max-width: 600px) {
+                    #productGrid {
+                        grid-template-columns: 1fr !important;
+                    }
+                }
+            </style>
+
+            <div id="productGrid">
                 <!-- JavaScript로 동적 생성 -->
                 <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #999;">
                     <div style="font-size: 48px; margin-bottom: 16px;">🛒</div>
@@ -553,7 +641,7 @@
                 </div>
             </div>
             <div class="footer-bottom">
-                <p>&copy; 2024 팜랜드. All rights reserved. | <span id="versionInfo" style="font-size: 0.85em; color: #999;">v1.2.20260121-0615</span></p>
+                <p>&copy; 2024 팜랜드. All rights reserved. | <span id="versionInfo" style="font-size: 0.85em; color: #999;">v1.3.20260128-2354</span></p>
                 <p class="footer-disclaimer">본 사이트에서 판매하는 산양산삼은 건강기능식품이 아닌 일반 농산물이며, 질병의 예방 및 치료를 위한 의약품이 아닙니다.</p>
             </div>
         </div>
@@ -575,6 +663,6 @@
         </a>
     </div>
 
-    <script src="js/script.js?v=20260121-0615"></script>
+    <script src="js/script.js?v=20260128-2354"></script>
 </body>
 </html>

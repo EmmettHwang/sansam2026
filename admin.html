@@ -517,6 +517,7 @@
         <div style="margin-bottom: 30px; border-bottom: 2px solid #e0e0e0;">
             <button class="tab-btn active" onclick="showTab('gallery')">🖼️ 갤러리 관리</button>
             <button class="tab-btn" onclick="showTab('products')">🛒 간단구매 상품 관리</button>
+            <button class="tab-btn" onclick="showTab('settings')">⚙️ 사이트 설정</button>
         </div>
         
         <div class="system-info">
@@ -594,10 +595,53 @@
                 <!-- JavaScript로 동적 생성 -->
             </div>
         </div>
-        
+
+        <!-- 탭 컨텐츠: 사이트 설정 -->
+        <div id="settingsTab" class="tab-content">
+            <div class="help-box">
+                <h3>⚙️ 사이트 설정</h3>
+                <ul>
+                    <li><strong>미리보기 이미지:</strong> 카카오톡, 페이스북 등에서 URL 공유 시 표시되는 이미지</li>
+                    <li><strong>권장 크기:</strong> 1200 x 630 픽셀 (가로가 긴 직사각형)</li>
+                    <li><strong>파일 형식:</strong> JPG, PNG 권장</li>
+                </ul>
+            </div>
+
+            <div class="product-form">
+                <h3 style="margin-bottom: 20px; color: #2d5016;">🔗 URL 미리보기 이미지 (OG Image)</h3>
+                <p style="color: #666; margin-bottom: 20px;">카카오톡, 페이스북 등에서 링크 공유 시 표시되는 대표 이미지입니다.</p>
+
+                <div id="ogImagePreview" style="margin-bottom: 20px; text-align: center;">
+                    <img id="currentOgImage" src="/images/og-preview.jpg" alt="현재 미리보기 이미지"
+                         style="max-width: 100%; max-height: 300px; border-radius: 8px; border: 2px solid #ddd;"
+                         onerror="this.style.display='none'; document.getElementById('noOgImage').style.display='block';">
+                    <div id="noOgImage" style="display: none; padding: 60px; background: #f5f5f5; border-radius: 8px; color: #999;">
+                        <p style="font-size: 48px; margin-bottom: 10px;">🖼️</p>
+                        <p>미리보기 이미지가 없습니다</p>
+                    </div>
+                </div>
+
+                <div class="drop-zone" id="ogImageDropZone" style="min-height: 150px; display: flex; align-items: center; justify-content: center; border: 3px dashed #ccc; border-radius: 12px; cursor: pointer; margin-bottom: 20px;">
+                    <div style="text-align: center; color: #666;">
+                        <p style="font-size: 36px; margin-bottom: 10px;">📤</p>
+                        <p style="font-size: 16px; font-weight: 600;">클릭하거나 이미지를 드래그하세요</p>
+                        <p style="font-size: 13px; color: #999; margin-top: 8px;">권장: 1200 x 630 픽셀</p>
+                    </div>
+                </div>
+                <input type="file" id="ogImageFile" accept="image/*" style="display: none;">
+
+                <div style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
+                    <p style="color: #856404; font-size: 14px;">
+                        💡 <strong>팁:</strong> 이미지 변경 후 카카오톡에서 미리보기가 바로 안 바뀌면,
+                        <a href="https://developers.kakao.com/tool/clear/og" target="_blank" style="color: #0066cc;">카카오 캐시 초기화</a>를 해주세요.
+                    </p>
+                </div>
+            </div>
+        </div>
+
         <div class="actions">
-            <button class="btn btn-secondary" onclick="loadGallery(); loadProducts();">🔄 새로고침</button>
-            <button class="btn btn-secondary" onclick="window.open('index.html', '_blank')">👁️ 메인 페이지 보기</button>
+            <button class="btn btn-secondary" onclick="location.reload();">🔄 새로고침</button>
+            <button class="btn btn-secondary" onclick="window.open('/', '_blank')">👁️ 메인 페이지 보기</button>
         </div>
         
         <div id="statusMessage" class="status"></div>
@@ -628,6 +672,7 @@
             loadGallery();
             loadProducts();
             setupProductImageUpload();
+            setupOgImageUpload();
         });
         
         // 버전 정보 로드
@@ -829,14 +874,17 @@
             // 모든 탭 버튼과 컨텐츠 비활성화
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            // 선택된 탭 활성화
-            event.target.classList.add('active');
-            
+
+            // 선택된 탭 버튼 활성화
+            const targetBtn = document.querySelector(`[onclick="showTab('${tabName}')"]`);
+            if (targetBtn) targetBtn.classList.add('active');
+
             if (tabName === 'gallery') {
                 document.getElementById('galleryTab').classList.add('active');
             } else if (tabName === 'products') {
                 document.getElementById('productsTab').classList.add('active');
+            } else if (tabName === 'settings') {
+                document.getElementById('settingsTab').classList.add('active');
             }
         }
         
@@ -1069,7 +1117,6 @@
                 
                 // 상품 탭으로 이동
                 showTab('products');
-                document.querySelector('[onclick="showTab(\'products\')"]').click();
                 
                 // 폼 위치로 스크롤
                 document.querySelector('.product-form').scrollIntoView({ behavior: 'smooth' });
@@ -1119,10 +1166,93 @@
             statusDiv.className = `status ${type}`;
             statusDiv.textContent = message;
             statusDiv.style.display = 'block';
-            
+
             setTimeout(() => {
                 statusDiv.style.display = 'none';
             }, 5000);
+        }
+
+        // ========================================
+        // OG 이미지 (미리보기 이미지) 관리
+        // ========================================
+        function setupOgImageUpload() {
+            const dropZone = document.getElementById('ogImageDropZone');
+            const fileInput = document.getElementById('ogImageFile');
+
+            if (!dropZone || !fileInput) return;
+
+            // 클릭으로 파일 선택
+            dropZone.addEventListener('click', () => fileInput.click());
+
+            // 파일 선택 시
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) uploadOgImage(file);
+            });
+
+            // 드래그앤드롭
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#4a7c2a';
+                dropZone.style.background = '#f0f7ed';
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.style.borderColor = '#ccc';
+                dropZone.style.background = '';
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#ccc';
+                dropZone.style.background = '';
+
+                const file = e.dataTransfer.files[0];
+                if (file) uploadOgImage(file);
+            });
+        }
+
+        async function uploadOgImage(file) {
+            if (!file.type.startsWith('image/')) {
+                showStatus('이미지 파일만 업로드 가능합니다.', 'error');
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                showStatus('파일 크기는 10MB를 초과할 수 없습니다.', 'error');
+                return;
+            }
+
+            showLoading(true);
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch('/api/og-image', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || '업로드 실패');
+                }
+
+                // 미리보기 업데이트
+                const preview = document.getElementById('currentOgImage');
+                const noImage = document.getElementById('noOgImage');
+                preview.src = '/images/og-preview.jpg?' + new Date().getTime();
+                preview.style.display = 'block';
+                noImage.style.display = 'none';
+
+                showStatus('미리보기 이미지가 업로드되었습니다.', 'success');
+            } catch (error) {
+                showStatus('업로드 실패: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
         }
     </script>
 </body>

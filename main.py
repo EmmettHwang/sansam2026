@@ -13,13 +13,14 @@ import mysql.connector
 from mysql.connector import Error
 import ftplib
 import uuid
+from PIL import Image
 
 # ============================================
 # 버전 정보
 # ============================================
-VERSION = "1.2.20260121-0615"
-VERSION_DATE = "2026-01-21 06:15"
-VERSION_DESCRIPTION = "팜랜드 산양산삼 랜딩 페이지 v1.0"
+VERSION = "1.3.20260128-2354"
+VERSION_DATE = "2026-01-28 23:54"
+VERSION_DESCRIPTION = "팜랜드 산양산삼 랜딩 페이지 v1.3 - PC 모달, 간단구매 UI 개선"
 
 # FastAPI 앱 생성
 app = FastAPI(
@@ -72,10 +73,10 @@ app.mount("/static", StaticFiles(directory="."), name="static")
 # 데이터베이스 설정
 # ============================================
 DB_CONFIG = {
-    'host': 'bitnmeta2.synology.me',
-    'port': 3307,
+    'host': 'localhost',
+    'port': 3306,
     'user': 'iyrc',
-    'password': 'Dodan1004!',
+    'password': 'dodan1004',
     'database': 'sansam'
 }
 
@@ -198,6 +199,46 @@ async def get_version():
 async def test():
     """테스트 엔드포인트"""
     return {"success": True, "message": "API 정상 작동"}
+
+@app.post("/api/og-image")
+async def upload_og_image(file: UploadFile = File(...)):
+    """OG 이미지 (미리보기 이미지) 업로드"""
+    try:
+        # 파일 확장자 확인
+        allowed_extensions = ['jpg', 'jpeg', 'png', 'webp']
+        file_ext = file.filename.split('.')[-1].lower()
+        if file_ext not in allowed_extensions:
+            return {"success": False, "message": "지원하지 않는 파일 형식입니다."}
+
+        # 파일 저장
+        content = await file.read()
+        save_path = "images/og-preview.jpg"
+
+        # images 폴더 생성
+        os.makedirs("images", exist_ok=True)
+
+        # 이미지 리사이즈 (1200x630 권장)
+        try:
+            img = Image.open(io.BytesIO(content))
+            # 비율 유지하며 리사이즈
+            target_width = 1200
+            target_height = 630
+            img = img.resize((target_width, target_height), Image.LANCZOS)
+
+            # RGB 모드로 변환 (PNG의 경우 RGBA일 수 있음)
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+
+            img.save(save_path, 'JPEG', quality=90, optimize=True)
+        except Exception as e:
+            # 리사이즈 실패 시 원본 저장
+            with open(save_path, 'wb') as f:
+                f.write(content)
+
+        return {"success": True, "message": "미리보기 이미지가 업로드되었습니다."}
+
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 # ============================================
 # 갤러리 API
@@ -417,66 +458,99 @@ async def upload_image(
     }
 
 @app.get("/api/image/{category}/{filename}")
-async def serve_image(category: str, filename: str):
-    """이미지 제공 (로컬 캐시 우선, 없으면 FTP에서 다운로드)"""
-    
-    # 로컬 캐시 경로
-    cache_dir = f"images/cache/{category}"
+async def serve_image(category: str, filename: str, size: int = None):
+    """이미지 제공 (로컬 캐시 우선, 없으면 FTP에서 다운로드)
+
+    Args:
+        size: 리사이즈 너비 (기본값은 카테고리별 최적화)
+    """
+
+    # 카테고리별 기본 리사이즈 크기 설정 (성능 최적화)
+    DEFAULT_SIZES = {
+        'live': 1280,      # 타임랩스
+        'products': 600,   # 상품 이미지 (작게)
+        'farm': 1000,      # 갤러리
+        'ginseng': 1000,
+        'process': 1000,
+        'package': 1000,
+        'license': 1000,
+    }
+
+    if size is None:
+        size = DEFAULT_SIZES.get(category, 1000)
+
+    # 로컬 캐시 경로 (리사이즈된 이미지는 별도 폴더)
+    if size:
+        cache_dir = f"images/cache/{category}/resized_{size}"
+    else:
+        cache_dir = f"images/cache/{category}"
     os.makedirs(cache_dir, exist_ok=True)
     cache_path = f"{cache_dir}/{filename}"
-    
+
+    # MIME 타입 결정
+    ext = filename.split('.')[-1].lower()
+    mime_types = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp'
+    }
+    media_type = mime_types.get(ext, 'image/jpeg')
+
     # 로컬 캐시 확인
     if os.path.exists(cache_path):
-        # 캐시 사용 (로그 없음 - 성능 향상)
-        
-        # MIME 타입 결정
-        ext = filename.split('.')[-1].lower()
-        mime_types = {
-            'jpg': 'image/jpeg',
-            'jpeg': 'image/jpeg',
-            'png': 'image/png',
-            'gif': 'image/gif',
-            'webp': 'image/webp'
-        }
-        media_type = mime_types.get(ext, 'image/jpeg')
-        
         return FileResponse(cache_path, media_type=media_type)
-    
-    # 로컬에 없으는면 FTP에서 다운로드 (첫 번째 요청시만 로그)
-    # print(f"  📥 FTP에서 다운로드 중: {category}/{filename}")
+
+    # FTP에서 다운로드
     ftp = get_ftp_connection()
     if not ftp:
         raise HTTPException(status_code=500, detail="FTP 연결 실패")
-    
+
     try:
         ftp_path = f"{FTP_CONFIG['base_path']}{category}/{filename}"
-        
+
         # 메모리에 파일 다운로드
         file_data = io.BytesIO()
         ftp.retrbinary(f'RETR {ftp_path}', file_data.write)
         ftp.quit()
-        
+
         file_data.seek(0)
-        
-        # 로컬에 저장 (캐시) - 로그 제거
-        with open(cache_path, 'wb') as f:
-            f.write(file_data.getvalue())
-        # print(f"  ✅ 로컬 캐시 저장 완료: {cache_path}")
-        
-        # MIME 타입 결정
-        ext = filename.split('.')[-1].lower()
-        mime_types = {
-            'jpg': 'image/jpeg',
-            'jpeg': 'image/jpeg',
-            'png': 'image/png',
-            'gif': 'image/gif',
-            'webp': 'image/webp'
-        }
-        media_type = mime_types.get(ext, 'image/jpeg')
-        
-        # 로컬 파일로 응답
+
+        # 리사이즈 처리
+        if size:
+            try:
+                img = Image.open(file_data)
+
+                # 이미지가 목표 크기보다 크면 리사이즈
+                if img.width > size:
+                    ratio = size / img.width
+                    new_height = int(img.height * ratio)
+                    img = img.resize((size, new_height), Image.LANCZOS)
+
+                # RGB 변환 (PNG RGBA 처리)
+                if img.mode in ('RGBA', 'P'):
+                    img = img.convert('RGB')
+
+                # 저장 (JPEG 압축)
+                output = io.BytesIO()
+                img.save(output, format='JPEG', quality=85, optimize=True)
+                output.seek(0)
+
+                with open(cache_path, 'wb') as f:
+                    f.write(output.getvalue())
+            except Exception as resize_error:
+                print(f"  ⚠️ 리사이즈 실패, 원본 사용: {resize_error}")
+                file_data.seek(0)
+                with open(cache_path, 'wb') as f:
+                    f.write(file_data.getvalue())
+        else:
+            # 원본 저장
+            with open(cache_path, 'wb') as f:
+                f.write(file_data.getvalue())
+
         return FileResponse(cache_path, media_type=media_type)
-    
+
     except Exception as e:
         print(f"  ❌ 이미지 로드 실패: {str(e)}")
         raise HTTPException(status_code=404, detail=f"이미지를 찾을 수 없습니다: {str(e)}")

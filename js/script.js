@@ -8,25 +8,26 @@ class TrustImageSlider {
         this.container = container;
         this.images = images;
         this.currentIndex = 0;
-        this.autoPlayInterval = null;
-        
+        this.touchStartX = 0;
+        this.touchEndX = 0;
+
         if (images.length > 0) {
             this.render();
             if (images.length > 1) {
-                this.startAutoPlay();
+                this.attachEvents();
             }
         }
     }
-    
+
     render() {
         const hasMultiple = this.images.length > 1;
-        
+
         this.container.innerHTML = `
             <div class="trust-image-slider">
                 <div class="trust-image-track" data-slider-track>
                     ${this.images.map(img => `
                         <div class="trust-image-slide">
-                            <img src="${img}" alt="Trust Image" loading="lazy">
+                            <img src="${img}" alt="Trust Image" loading="lazy" draggable="false">
                         </div>
                     `).join('')}
                 </div>
@@ -41,68 +42,102 @@ class TrustImageSlider {
                 ` : ''}
             </div>
         `;
-        
-        if (hasMultiple) {
-            this.attachEvents();
-        }
     }
-    
+
     attachEvents() {
         const prevBtn = this.container.querySelector('[data-slider-prev]');
         const nextBtn = this.container.querySelector('[data-slider-next]');
         const dots = this.container.querySelectorAll('[data-slider-dot]');
-        
+        const slider = this.container.querySelector('.trust-image-slider');
+
+        // 버튼 클릭
         if (prevBtn) prevBtn.addEventListener('click', () => this.prev());
         if (nextBtn) nextBtn.addEventListener('click', () => this.next());
-        
+
+        // 인디케이터 클릭
         dots.forEach((dot, index) => {
             dot.addEventListener('click', () => this.goTo(index));
         });
+
+        // 터치 스와이프 (모바일)
+        if (slider) {
+            slider.addEventListener('touchstart', (e) => {
+                this.touchStartX = e.changedTouches[0].screenX;
+            }, { passive: true });
+
+            slider.addEventListener('touchend', (e) => {
+                this.touchEndX = e.changedTouches[0].screenX;
+                this.handleSwipe();
+            }, { passive: true });
+
+            // 마우스 드래그 (데스크톱)
+            let isDragging = false;
+            slider.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                this.touchStartX = e.screenX;
+                slider.style.cursor = 'grabbing';
+            });
+
+            slider.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+            });
+
+            slider.addEventListener('mouseup', (e) => {
+                if (!isDragging) return;
+                isDragging = false;
+                this.touchEndX = e.screenX;
+                slider.style.cursor = 'grab';
+                this.handleSwipe();
+            });
+
+            slider.addEventListener('mouseleave', () => {
+                isDragging = false;
+                slider.style.cursor = 'grab';
+            });
+
+            slider.style.cursor = 'grab';
+        }
     }
-    
+
+    handleSwipe() {
+        const swipeThreshold = 50;
+        const diff = this.touchStartX - this.touchEndX;
+
+        if (Math.abs(diff) > swipeThreshold) {
+            if (diff > 0) {
+                this.next(); // 왼쪽으로 스와이프 = 다음
+            } else {
+                this.prev(); // 오른쪽으로 스와이프 = 이전
+            }
+        }
+    }
+
     goTo(index) {
         this.currentIndex = index;
         const track = this.container.querySelector('[data-slider-track]');
         if (track) {
             track.style.transform = `translateX(-${index * 100}%)`;
         }
-        
+
         this.updateIndicators();
-        this.resetAutoPlay();
     }
-    
+
     updateIndicators() {
         const dots = this.container.querySelectorAll('[data-slider-dot]');
         dots.forEach((dot, index) => {
             dot.classList.toggle('active', index === this.currentIndex);
         });
     }
-    
+
     prev() {
         const newIndex = this.currentIndex > 0 ? this.currentIndex - 1 : this.images.length - 1;
         this.goTo(newIndex);
     }
-    
+
     next() {
         const newIndex = this.currentIndex < this.images.length - 1 ? this.currentIndex + 1 : 0;
         this.goTo(newIndex);
-    }
-    
-    startAutoPlay() {
-        this.autoPlayInterval = setInterval(() => {
-            this.next();
-        }, 4000); // 4초마다 자동 넘김
-    }
-    
-    stopAutoPlay() {
-        if (this.autoPlayInterval) {
-            clearInterval(this.autoPlayInterval);
-        }
-    }
-    
-    resetAutoPlay() {
-        this.stopAutoPlay();
-        this.startAutoPlay();
     }
 }
 
@@ -347,25 +382,313 @@ function initImagePlaceholders() {
 }
 
 // ============================================
-// 7. 전화/문자 클릭 추적 (분석용)
+// 7. 전화/문자 클릭 처리 (PC에서는 모달 표시)
 // ============================================
+function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+           || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+}
+
+function showContactModal(type) {
+    const isCall = type === 'call';
+    const phoneNumber = '010-2512-6818';
+
+    // 기존 모달 제거
+    const existingModal = document.getElementById('contactModal');
+    if (existingModal) existingModal.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'contactModal';
+    modal.innerHTML = `
+        <div class="contact-modal-backdrop"></div>
+        <div class="contact-modal-content">
+            <button class="contact-modal-close">&times;</button>
+            <div class="contact-modal-icon">${isCall ? '📞' : '💬'}</div>
+            <h3 class="contact-modal-title">${isCall ? '전화 상담 안내' : '문자 상담 안내'}</h3>
+            <p class="contact-modal-desc">
+                ${isCall
+                    ? 'PC에서는 직접 전화가 어렵습니다.<br>아래 번호로 전화해 주세요!'
+                    : 'PC에서는 직접 문자가 어렵습니다.<br>아래 번호로 문자를 보내주세요!'}
+            </p>
+            <div class="contact-modal-phone">
+                <span class="contact-modal-number">${phoneNumber}</span>
+                <button class="contact-modal-copy" onclick="copyPhoneNumber('${phoneNumber}')">
+                    📋 복사
+                </button>
+            </div>
+            <div class="contact-modal-info">
+                <p>🕐 상담시간: <strong>08:00 ~ 20:00</strong> (연중무휴)</p>
+            </div>
+            <div class="contact-modal-actions">
+                ${!isCall ? `<a href="mailto:farmland@example.com?subject=산양산삼 문의" class="contact-modal-btn email">📧 이메일 문의</a>` : ''}
+                <button class="contact-modal-btn close" onclick="closeContactModal()">확인</button>
+            </div>
+        </div>
+    `;
+
+    // 스타일 추가
+    const style = document.createElement('style');
+    style.id = 'contactModalStyle';
+    style.textContent = `
+        #contactModal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: modalFadeIn 0.3s ease;
+        }
+        @keyframes modalFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes modalSlideIn {
+            from { opacity: 0; transform: scale(0.9) translateY(-20px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .contact-modal-backdrop {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+        }
+        .contact-modal-content {
+            position: relative;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 420px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: modalSlideIn 0.3s ease;
+        }
+        .contact-modal-close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: none;
+            border: none;
+            font-size: 28px;
+            color: #999;
+            cursor: pointer;
+            transition: color 0.2s;
+            line-height: 1;
+        }
+        .contact-modal-close:hover {
+            color: #333;
+        }
+        .contact-modal-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+        .contact-modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2d5016;
+            margin-bottom: 12px;
+        }
+        .contact-modal-desc {
+            font-size: 16px;
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+        .contact-modal-phone {
+            background: linear-gradient(135deg, #f0f8f0 0%, #e8f5e9 100%);
+            border: 2px solid #4a7c2a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+        .contact-modal-number {
+            font-size: 28px;
+            font-weight: 700;
+            color: #2d5016;
+            letter-spacing: 1px;
+        }
+        .contact-modal-copy {
+            background: #4a7c2a;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .contact-modal-copy:hover {
+            background: #2d5016;
+            transform: scale(1.05);
+        }
+        .contact-modal-copy.copied {
+            background: #10b981;
+        }
+        .contact-modal-info {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 24px;
+        }
+        .contact-modal-info p {
+            margin: 0;
+            font-size: 14px;
+            color: #666;
+        }
+        .contact-modal-info strong {
+            color: #333;
+        }
+        .contact-modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        .contact-modal-btn {
+            padding: 14px 28px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            border: none;
+        }
+        .contact-modal-btn.close {
+            background: #4a7c2a;
+            color: white;
+            flex: 1;
+        }
+        .contact-modal-btn.close:hover {
+            background: #2d5016;
+            transform: translateY(-2px);
+        }
+        .contact-modal-btn.email {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .contact-modal-btn.email:hover {
+            background: #e0e0e0;
+        }
+        @media (max-width: 480px) {
+            .contact-modal-content {
+                padding: 30px 20px;
+            }
+            .contact-modal-phone {
+                flex-direction: column;
+                gap: 12px;
+            }
+            .contact-modal-number {
+                font-size: 24px;
+            }
+            .contact-modal-actions {
+                flex-direction: column;
+            }
+        }
+    `;
+
+    // 기존 스타일 제거 후 추가
+    const existingStyle = document.getElementById('contactModalStyle');
+    if (existingStyle) existingStyle.remove();
+    document.head.appendChild(style);
+
+    document.body.appendChild(modal);
+    document.body.style.overflow = 'hidden';
+
+    // 배경 클릭 시 닫기
+    modal.querySelector('.contact-modal-backdrop').addEventListener('click', closeContactModal);
+    modal.querySelector('.contact-modal-close').addEventListener('click', closeContactModal);
+
+    // ESC 키로 닫기
+    document.addEventListener('keydown', handleModalEsc);
+}
+
+function handleModalEsc(e) {
+    if (e.key === 'Escape') {
+        closeContactModal();
+    }
+}
+
+function closeContactModal() {
+    const modal = document.getElementById('contactModal');
+    if (modal) {
+        modal.style.animation = 'modalFadeIn 0.2s ease reverse';
+        setTimeout(() => {
+            modal.remove();
+            document.body.style.overflow = '';
+        }, 200);
+    }
+    document.removeEventListener('keydown', handleModalEsc);
+}
+
+function copyPhoneNumber(phone) {
+    navigator.clipboard.writeText(phone).then(() => {
+        const copyBtn = document.querySelector('.contact-modal-copy');
+        if (copyBtn) {
+            copyBtn.textContent = '✅ 복사됨!';
+            copyBtn.classList.add('copied');
+            setTimeout(() => {
+                copyBtn.textContent = '📋 복사';
+                copyBtn.classList.remove('copied');
+            }, 2000);
+        }
+    }).catch(() => {
+        // 클립보드 API 실패 시 대체 방법
+        const textArea = document.createElement('textarea');
+        textArea.value = phone;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+
+        const copyBtn = document.querySelector('.contact-modal-copy');
+        if (copyBtn) {
+            copyBtn.textContent = '✅ 복사됨!';
+            copyBtn.classList.add('copied');
+            setTimeout(() => {
+                copyBtn.textContent = '📋 복사';
+                copyBtn.classList.remove('copied');
+            }, 2000);
+        }
+    });
+}
+
 function trackCTAClicks() {
     const callButtons = document.querySelectorAll('[href^="tel:"]');
     const smsButtons = document.querySelectorAll('[href^="sms:"]');
-    
+
     callButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
             console.log('전화 버튼 클릭:', btn.href);
-            // Google Analytics 또는 기타 분석 도구 연동 가능
-            // gtag('event', 'call_button_click', { ... });
+
+            // PC인 경우 모달 표시
+            if (!isMobileDevice()) {
+                e.preventDefault();
+                showContactModal('call');
+            }
         });
     });
-    
+
     smsButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
             console.log('문자 버튼 클릭:', btn.href);
-            // Google Analytics 또는 기타 분석 도구 연동 가능
-            // gtag('event', 'sms_button_click', { ... });
+
+            // PC인 경우 모달 표시
+            if (!isMobileDevice()) {
+                e.preventDefault();
+                showContactModal('sms');
+            }
         });
     });
 }
@@ -784,15 +1107,17 @@ async function loadProducts() {
             return;
         }
         
+        // Admin 등록된 상품과 동일한 HTML 구조
         productGrid.innerHTML = result.data.map(product => `
-            <div class="product-card" onclick="goToPurchasePage(${product.id})">
-                <img src="${product.image_path}" alt="${product.name}" class="product-image" 
-                     onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27260%27 height=%27260%27%3E%3Crect fill=%27%23f0f0f0%27 width=%27260%27 height=%27260%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 dominant-baseline=%27middle%27 text-anchor=%27middle%27 fill=%27%23999%27 font-size=%2716%27%3E이미지 없음%3C/text%3E%3C/svg%3E'">
+            <div class="product-item">
+                <img src="${product.image_path}" alt="${product.name}" class="product-image" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27200%27%3E%3Crect fill=%27%23ccc%27 width=%27200%27 height=%27200%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 dominant-baseline=%27middle%27 text-anchor=%27middle%27 fill=%27%23666%27%3E이미지 없음%3C/text%3E%3C/svg%3E'">
                 <div class="product-info">
                     <div class="product-name">${product.name}</div>
                     <div class="product-price">${Number(product.price).toLocaleString()}원</div>
-                    ${product.description ? `<p class="product-description">${product.description}</p>` : ''}
-                    <button class="product-buy-btn">🛒 구매하기</button>
+                    <div class="product-actions">
+                        <button class="btn-small btn-buy" onclick="event.stopPropagation(); goToPurchasePage(${product.id})">구매하기</button>
+                        <button class="btn-small btn-inquiry" onclick="event.stopPropagation(); openInquiry('${product.name}')">문의하기</button>
+                    </div>
                 </div>
             </div>
         `).join('');
@@ -812,12 +1137,12 @@ async function loadProducts() {
 function goToPurchasePage(productId) {
     // 상품 정보 저장
     sessionStorage.setItem('selectedProductId', productId);
-    
+
     // 문의 폼으로 스크롤
     const contactForm = document.getElementById('contact-form');
     if (contactForm) {
         contactForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        
+
         // 1초 후 안내 메시지
         setTimeout(() => {
             alert('해당 상품에 대한 구매 문의를 아래 폼에 작성해주세요.\n\n☎️ 전화: 010-2512-6818\n💬 문자: 010-2512-6818');
@@ -825,6 +1150,20 @@ function goToPurchasePage(productId) {
     } else {
         // 문의 폼이 없으면 직접 연락 안내
         alert('상품 구매 문의\n\n☎️ 전화: 010-2512-6818\n💬 문자: 010-2512-6818\n\n상담 시간: 08:00 ~ 20:00 (연중무휴)');
+    }
+}
+
+function openInquiry(productName) {
+    // 문의 폼으로 스크롤
+    const contactForm = document.getElementById('contact-form');
+    if (contactForm) {
+        contactForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        setTimeout(() => {
+            alert(`[${productName}] 상품 문의\n\n아래 폼에 문의 내용을 작성해주세요.\n\n☎️ 전화: 010-2512-6818`);
+        }, 500);
+    } else {
+        alert(`[${productName}] 상품 문의\n\n☎️ 전화: 010-2512-6818\n💬 문자: 010-2512-6818\n\n상담 시간: 08:00 ~ 20:00`);
     }
 }
 
